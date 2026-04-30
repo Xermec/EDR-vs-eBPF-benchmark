@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detection Benchmark — EDR vs eBPF</title>
+<style>
+:root, [data-theme="dark"] {
+  --bg-0: #06090d;
+  --bg-1: #0a0e14;
+  --bg-2: #11161d;
+  --bg-3: #1a2029;
+  --border: #1f2933;
+  --border-strong: #2a3441;
+  --text-1: #d3d1c7;
+  --text-2: #888780;
+  --text-3: #5f5e5a;
+  --teal: #5dcaa5;
+  --teal-dim: #2a7a5e;
+  --pink: #d4537e;
+  --pink-dim: #7a2e48;
+  --amber: #ef9f27;
+  --red: #e24b4a;
+  --blue: #378add;
+  --chart-grid: #1f2933;
+  --chart-axis: #5f5e5a;
+}
+
+[data-theme="light"] {
+  --bg-0: #f5f6f8;
+  --bg-1: #ffffff;
+  --bg-2: #fafbfc;
+  --bg-3: #eef0f3;
+  --border: #d8dde3;
+  --border-strong: #b9c1cb;
+  --text-1: #1a2029;
+  --text-2: #4a5562;
+  --text-3: #8c95a1;
+  --teal: #128a64;
+  --teal-dim: #0a5a42;
+  --pink: #b4365c;
+  --pink-dim: #832748;
+  --amber: #b46f0d;
+  --red: #c12d2c;
+  --blue: #1f6db8;
+  --chart-grid: #e0e4ea;
+  --chart-axis: #8c95a1;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.app { max-width: 1600px; margin: 0 auto; }
+
+/* ===== HEADER ===== */
+.header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; background: var(--bg-1);
+  border: 0.5px solid var(--border); border-radius: 8px; margin-bottom: 12px;
+}
+.header h1 { font-size: 16px; font-weight: 500; color: var(--teal); letter-spacing: 1px; }
+.header .subtitle { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.status-bar { display: flex; gap: 20px; align-items: center; }
+.agent-pill { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.dot.online { background: var(--teal); box-shadow: 0 0 6px var(--teal-dim); }
+.dot.offline { background: var(--red); }
+
+/* Theme toggle */
+.theme-toggle {
+  background: var(--bg-2);
+  border: 0.5px solid var(--border);
+  color: var(--text-2);
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+.theme-toggle:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: var(--bg-3);
+}
+
+/* ===== SUMMARY ===== */
+.summary {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.summary .tile { text-align: center; }
+.summary .tile-value { font-size: 24px; }
+
+.tile {
+  background: var(--bg-1); padding: 12px;
+  border-radius: 8px; border: 0.5px solid var(--border);
+}
+.tile-label { font-size: 10px; color: var(--text-2); letter-spacing: 0.5px; }
+.tile-value { font-size: 20px; font-weight: 500; color: var(--text-1); margin-top: 4px; }
+.tile-unit { font-size: 11px; color: var(--text-2); margin-left: 2px; }
+
+/* ===== CONTROL BAR ===== */
+.control-bar {
+  display: flex; gap: 12px; padding: 12px;
+  background: var(--bg-1); border: 0.5px solid var(--border);
+  border-radius: 8px; margin-bottom: 12px; align-items: center;
+  flex-wrap: wrap;
+}
+
+.control-bar select {
+  flex: 1; min-width: 240px;
+  background: var(--bg-0); border: 0.5px solid var(--border-strong);
+  color: var(--text-1); padding: 10px 12px; border-radius: 6px;
+  font-family: inherit; font-size: 12px; cursor: pointer; outline: none;
+}
+.control-bar select:focus { border-color: var(--teal); }
+
+.btn {
+  background: transparent; border: 0.5px solid var(--border-strong);
+  color: var(--text-1); padding: 10px 16px; border-radius: 6px;
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; letter-spacing: 0.5px; transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--teal); color: var(--teal); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary { background: var(--teal); color: #04342C; border: none; font-weight: 600; }
+.btn-primary:hover { background: #4ab18d; color: #04342C; }
+.btn-primary:disabled { background: var(--text-3); color: var(--bg-1); }
+
+.btn-warning { background: var(--amber); color: #412402; border: none; font-weight: 600; }
+.btn-warning:hover { background: #d68a1f; color: #412402; }
+
+.btn-danger { background: var(--red); color: #fff; border: none; font-weight: 600; }
+.btn-danger:hover { background: #c83a39; }
+
+/* ===== PROGRESS BAR ===== */
+.progress-row {
+  background: var(--bg-1); border: 0.5px solid var(--border);
+  border-radius: 8px; padding: 10px 16px; margin-bottom: 12px;
+  display: none; align-items: center; gap: 12px;
+}
+.progress-row.active { display: flex; }
+.progress-track {
+  flex: 1; height: 6px; background: var(--bg-3);
+  border-radius: 3px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: var(--teal);
+  width: 0%; transition: width 0.3s;
+}
+.progress-label { font-size: 11px; color: var(--text-2); min-width: 120px; }
+
+/* ===== AGENT GRID ===== */
+.agent-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-bottom: 12px;
+}
+.agent-card {
+  background: var(--bg-1); border: 0.5px solid var(--border);
+  border-radius: 8px; padding: 16px; border-top-width: 2px;
+}
+.agent-card.ebpf { border-top-color: var(--teal); }
+.agent-card.edr { border-top-color: var(--pink); }
+
+.agent-head {
+  display: flex; justify-content: space-between;
+  align-items: flex-start; margin-bottom: 14px;
+}
+.agent-name { font-size: 14px; font-weight: 500; letter-spacing: 1px; }
+.agent-card.ebpf .agent-name { color: var(--teal); }
+.agent-card.edr .agent-name { color: var(--pink); }
+.agent-meta { font-size: 10px; color: var(--text-2); margin-top: 2px; }
+
+.badge {
+  font-size: 10px; padding: 4px 10px; border-radius: 4px;
+  font-weight: 500; letter-spacing: 0.5px;
+}
+.badge.idle { background: var(--bg-3); color: var(--text-2); }
+.badge.running { background: #1d2e0a; color: #c0dd97; }
+.badge.detected { background: #04342C; color: #9fe1cb; }
+.badge.missed { background: #4b1528; color: #f4c0d1; }
+
+/* Light theme badge override-ууд */
+[data-theme="light"] .badge.running { background: #d8f0c0; color: #3a5e0a; }
+[data-theme="light"] .badge.detected { background: #c4ecd8; color: #0a4a35; }
+[data-theme="light"] .badge.missed { background: #f5d0d8; color: #8a2238; }
+[data-theme="light"] .win-pill.ebpf { background: #c4ecd8; color: #0a4a35; }
+[data-theme="light"] .win-pill.edr  { background: #f5d0d8; color: #8a2238; }
+[data-theme="light"] .win-pill.tie  { background: #ffe6c0; color: #8a5a0a; }
+[data-theme="light"] .win-pill.none { background: var(--bg-3); color: var(--text-3); }
+
+/* Light theme дээр primary/warning/danger button-уудыг тохируулах */
+[data-theme="light"] .btn-primary { background: var(--teal); color: #ffffff; }
+[data-theme="light"] .btn-primary:hover { background: #0d6a4d; color: #ffffff; }
+[data-theme="light"] .btn-warning { background: var(--amber); color: #ffffff; }
+[data-theme="light"] .btn-warning:hover { background: #8c5708; color: #ffffff; }
+
+.tiles {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.tile-mini {
+  background: var(--bg-0); padding: 10px 12px;
+  border-radius: 4px; border: 0.5px solid var(--border);
+}
+.tile-mini .label { font-size: 10px; color: var(--text-2); letter-spacing: 0.5px; }
+.tile-mini .value { font-size: 18px; font-weight: 500; color: var(--text-1); margin-top: 2px; }
+.tile-mini .unit { font-size: 11px; color: var(--text-2); margin-left: 2px; }
+
+.chart-box {
+  background: var(--bg-0); border-radius: 4px;
+  padding: 8px; margin-bottom: 12px; height: 120px; position: relative;
+}
+.chart-box canvas { width: 100% !important; height: 100% !important; }
+
+.detect-rows { border-top: 0.5px dashed var(--border); padding-top: 10px; }
+.detect-row {
+  display: flex; justify-content: space-between;
+  font-size: 11px; padding: 3px 0;
+}
+.detect-row .label { color: var(--text-2); }
+.detect-row .value { color: var(--text-1); font-weight: 500; }
+.detect-row .value.crit { color: var(--red); }
+.detect-row .value.high { color: var(--amber); }
+.detect-row .value.ok { color: var(--teal); }
+.detect-row .value.dim { color: var(--text-3); }
+
+/* ===== EVENT FEED ===== */
+.feed {
+  background: var(--bg-1); border: 0.5px solid var(--border);
+  border-radius: 8px; padding: 12px 16px;
+  max-height: 240px; overflow-y: auto; margin-bottom: 12px;
+}
+.feed-title {
+  font-size: 11px; color: var(--text-2); letter-spacing: 1px;
+  margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+}
+.feed-clear {
+  font-size: 10px; color: var(--text-3); cursor: pointer; text-decoration: underline;
+}
+.feed-row {
+  display: flex; gap: 12px; font-size: 11px;
+  padding: 5px 0; border-bottom: 0.5px dashed var(--border); align-items: baseline;
+}
+.feed-row:last-child { border-bottom: none; }
+.feed-time { color: var(--text-3); min-width: 70px; }
+.feed-source { font-weight: 600; min-width: 80px; }
+.feed-source.ebpf { color: var(--teal); }
+.feed-source.edr { color: var(--pink); }
+.feed-source.system { color: var(--text-2); }
+.feed-source.crit { color: var(--red); }
+.feed-msg { color: var(--text-1); flex: 1; word-break: break-word; }
+
+/* ===== RESULTS TABLE ===== */
+.results-section {
+  background: var(--bg-1); border: 0.5px solid var(--border);
+  border-radius: 8px; padding: 16px;
+}
+.results-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+}
+.results-title {
+  font-size: 13px; color: var(--teal); letter-spacing: 1px; font-weight: 500;
+}
+.results-actions { display: flex; gap: 8px; }
+
+.results-table {
+  width: 100%; font-size: 11px; border-collapse: collapse;
+}
+.results-table th, .results-table td {
+  padding: 6px 8px; text-align: left;
+  border-bottom: 0.5px solid var(--border);
+}
+.results-table th {
+  font-size: 10px; color: var(--text-2);
+  letter-spacing: 0.5px; font-weight: 500;
+  background: var(--bg-2); position: sticky; top: 0;
+}
+.results-table td.center { text-align: center; }
+.results-table tr:hover td { background: var(--bg-2); }
+
+.dot-result {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; vertical-align: middle;
+}
+.dot-result.yes { background: var(--teal); }
+.dot-result.no  { background: var(--red); opacity: 0.5; }
+.dot-result.gray { background: var(--text-3); }
+
+.win-pill {
+  font-size: 10px; padding: 2px 8px; border-radius: 3px;
+  font-weight: 600; letter-spacing: 0.3px;
+}
+.win-pill.ebpf { background: #04342C; color: #9fe1cb; }
+.win-pill.edr  { background: #4b1528; color: #f4c0d1; }
+.win-pill.tie  { background: #412402; color: #fac775; }
+.win-pill.none { background: var(--bg-3); color: var(--text-3); }
+
+.summary-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; padding: 12px 0; margin-top: 12px;
+  border-top: 0.5px solid var(--border);
+}
+.summary-stat {
+  text-align: center; padding: 8px;
+  background: var(--bg-0); border-radius: 4px;
+}
+.summary-stat .num { font-size: 18px; font-weight: 500; color: var(--text-1); }
+.summary-stat .lbl { font-size: 10px; color: var(--text-2); margin-top: 2px; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-0); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+@media (max-width: 900px) {
+  .agent-grid { grid-template-columns: 1fr; }
+  .summary { grid-template-columns: 1fr 1fr; }
+  .summary-stats { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="header">
+    <div>
+      <h1>DETECTION BENCHMARK</h1>
+      <div class="subtitle">EDR vs eBPF · live malware comparison</div>
+    </div>
+    <div class="status-bar">
+      <button class="theme-toggle" id="theme-toggle" title="Theme солих" aria-label="Theme toggle">
+        <svg id="theme-icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg id="theme-icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+      <div class="agent-pill"><span class="dot offline" id="dot-ebpf"></span><span>eBPF</span></div>
+      <div class="agent-pill"><span class="dot offline" id="dot-edr"></span><span>EDR</span></div>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="tile">
+      <div class="tile-label">SAMPLE</div>
+      <div class="tile-value" id="cur-sample">—</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">eBPF LATENCY</div>
+      <div class="tile-value" id="lat-ebpf" style="color: var(--teal);">—</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">EDR LATENCY</div>
+      <div class="tile-value" id="lat-edr" style="color: var(--pink);">—</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">WINNER</div>
+      <div class="tile-value" id="winner">—</div>
+    </div>
+  </div>
+
+  <div class="control-bar">
+    <select id="sample-select">
+      <option value="">— Sample songoyo —</option>
+    </select>
+    <button class="btn btn-primary" id="btn-run">▶  RUN</button>
+    <button class="btn btn-warning" id="btn-run-all">▶▶  RUN ALL (10)</button>
+    <button class="btn btn-danger" id="btn-stop" style="display:none;">■ STOP</button>
+    <button class="btn" id="btn-cleanup" title="EDR/eBPF серверүүд дээр malware процессыг устгана">CLEANUP</button>
+    <button class="btn" id="btn-reset">RESET UI</button>
+  </div>
+
+  <div class="progress-row" id="progress-row">
+    <span class="progress-label" id="progress-label">Run All — 0/10</span>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  </div>
+
+  <div class="agent-grid">
+
+    <div class="agent-card edr">
+      <div class="agent-head">
+        <div>
+          <div class="agent-name">TRELLIX EDR</div>
+          <div class="agent-meta">10.52.1.62 · agent 002</div>
+        </div>
+        <span class="badge idle" id="badge-edr">IDLE</span>
+      </div>
+      <div class="tiles">
+        <div class="tile-mini">
+          <div class="label">CPU</div>
+          <div class="value"><span id="cpu-edr">0</span><span class="unit">%</span></div>
+        </div>
+        <div class="tile-mini">
+          <div class="label">RAM</div>
+          <div class="value"><span id="ram-edr">0</span><span class="unit">MB</span></div>
+        </div>
+        <div class="tile-mini">
+          <div class="label">CONN</div>
+          <div class="value" id="net-edr">0</div>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="chart-edr"></canvas></div>
+      <div class="detect-rows">
+        <div class="detect-row">
+          <span class="label">Detection latency</span>
+          <span class="value dim" id="dt-lat-edr">—</span>
+        </div>
+        <div class="detect-row">
+          <span class="label">Alert level</span>
+          <span class="value dim" id="dt-lvl-edr">No alert</span>
+        </div>
+        <div class="detect-row">
+          <span class="label">Last rule</span>
+          <span class="value dim" id="dt-rule-edr">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="agent-card ebpf">
+      <div class="agent-head">
+        <div>
+          <div class="agent-name">eBPF HUNTER</div>
+          <div class="agent-meta">10.52.1.57 · agent 001</div>
+        </div>
+        <span class="badge idle" id="badge-ebpf">IDLE</span>
+      </div>
+      <div class="tiles">
+        <div class="tile-mini">
+          <div class="label">CPU</div>
+          <div class="value"><span id="cpu-ebpf">0</span><span class="unit">%</span></div>
+        </div>
+        <div class="tile-mini">
+          <div class="label">RAM</div>
+          <div class="value"><span id="ram-ebpf">0</span><span class="unit">MB</span></div>
+        </div>
+        <div class="tile-mini">
+          <div class="label">CONN</div>
+          <div class="value" id="net-ebpf">0</div>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="chart-ebpf"></canvas></div>
+      <div class="detect-rows">
+        <div class="detect-row">
+          <span class="label">Detection latency</span>
+          <span class="value dim" id="dt-lat-ebpf">—</span>
+        </div>
+        <div class="detect-row">
+          <span class="label">Alert level</span>
+          <span class="value dim" id="dt-lvl-ebpf">No alert</span>
+        </div>
+        <div class="detect-row">
+          <span class="label">Last rule</span>
+          <span class="value dim" id="dt-rule-ebpf">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="feed">
+    <div class="feed-title">
+      <span>EVENT FEED</span>
+      <span class="feed-clear" id="feed-clear">clear</span>
+    </div>
+    <div id="feed-list"></div>
+  </div>
+
+  <div class="results-section">
+    <div class="results-head">
+      <div class="results-title">RESULTS HISTORY · <span id="results-count">0</span> tests</div>
+      <div class="results-actions">
+        <a href="/benchmark/api/results.csv" class="btn" download>⤓ CSV</a>
+        <button class="btn" id="btn-clear-results">CLEAR</button>
+      </div>
+    </div>
+    <div style="overflow-x: auto;">
+      <table class="results-table" id="results-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>#</th>
+            <th>Sample</th>
+            <th>Tech</th>
+            <th class="center">EDR</th>
+            <th class="center">EDR ms</th>
+            <th class="center">EDR lvl</th>
+            <th class="center">eBPF</th>
+            <th class="center">eBPF ms</th>
+            <th class="center">eBPF lvl</th>
+            <th class="center">EDR CPU%</th>
+            <th class="center">eBPF CPU%</th>
+            <th class="center">Winner</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody">
+          <tr><td colspan="13" style="text-align: center; color: var(--text-3); padding: 20px;">No results yet — run a sample</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="summary-stats" id="summary-stats" style="display: none;">
+      <div class="summary-stat">
+        <div class="num" id="stat-total">0</div>
+        <div class="lbl">total tests</div>
+      </div>
+      <div class="summary-stat">
+        <div class="num" id="stat-ebpf-wins" style="color: var(--teal);">0</div>
+        <div class="lbl">eBPF wins</div>
+      </div>
+      <div class="summary-stat">
+        <div class="num" id="stat-edr-wins" style="color: var(--pink);">0</div>
+        <div class="lbl">EDR wins</div>
+      </div>
+      <div class="summary-stat">
+        <div class="num" id="stat-avg-ebpf" style="color: var(--teal);">—</div>
+        <div class="lbl">avg eBPF latency</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+
+const MAX_POINTS = 60;
+let samplesData = [];
+let runAllActive = false;
+
+const charts = {
+  ebpf: makeChart('chart-ebpf', '#5dcaa5'),
+  edr:  makeChart('chart-edr',  '#d4537e'),
+};
+window.charts = charts;
+
+function makeChart(canvasId, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'CPU %', data: [],
+          borderColor: color, backgroundColor: color + '22',
+          borderWidth: 1.5, tension: 0.3, pointRadius: 0,
+          fill: true, yAxisID: 'y',
+        },
+        {
+          label: 'RAM %', data: [],
+          borderColor: css.getPropertyValue('--text-2').trim(),
+          borderWidth: 1, borderDash: [3, 3],
+          tension: 0.3, pointRadius: 0, fill: false, yAxisID: 'y',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 100,
+             ticks: { color: css.getPropertyValue('--chart-axis').trim(), font: { size: 9 }, stepSize: 25 },
+             grid: { color: css.getPropertyValue('--chart-grid').trim(), drawBorder: false } },
+        x: { ticks: { display: false }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function updateChartsTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const gridColor = css.getPropertyValue('--chart-grid').trim();
+  const axisColor = css.getPropertyValue('--chart-axis').trim();
+  const text2 = css.getPropertyValue('--text-2').trim();
+  const teal = css.getPropertyValue('--teal').trim();
+  const pink = css.getPropertyValue('--pink').trim();
+
+  if (charts.ebpf) {
+    charts.ebpf.data.datasets[0].borderColor = teal;
+    charts.ebpf.data.datasets[0].backgroundColor = teal + '33';
+  }
+  if (charts.edr) {
+    charts.edr.data.datasets[0].borderColor = pink;
+    charts.edr.data.datasets[0].backgroundColor = pink + '33';
+  }
+
+  Object.values(charts).forEach(c => {
+    c.options.scales.y.ticks.color = axisColor;
+    c.options.scales.y.grid.color = gridColor;
+    c.data.datasets[1].borderColor = text2;
+    c.update('none');
+  });
+}
+
+function pushChart(key, cpu, ram_pct) {
+  const c = charts[key];
+  c.data.labels.push('');
+  c.data.datasets[0].data.push(cpu);
+  c.data.datasets[1].data.push(ram_pct);
+  if (c.data.labels.length > MAX_POINTS) {
+    c.data.labels.shift();
+    c.data.datasets[0].data.shift();
+    c.data.datasets[1].data.shift();
+  }
+  c.update('none');
+}
+
+function el(id) { return document.getElementById(id); }
+
+function setBadge(key, state, text) {
+  const b = el('badge-' + key);
+  b.className = 'badge ' + state;
+  b.textContent = text;
+}
+
+function feedAdd(source, msg, sourceClass) {
+  const list = el('feed-list');
+  const row = document.createElement('div');
+  row.className = 'feed-row';
+  const t = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  row.innerHTML = `<span class="feed-time">${t}</span>` +
+                  `<span class="feed-source ${sourceClass || source}">${source.toUpperCase()}</span>` +
+                  `<span class="feed-msg">${escapeHtml(msg)}</span>`;
+  list.insertBefore(row, list.firstChild);
+  while (list.children.length > 100) list.removeChild(list.lastChild);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function levelLabel(lvl) {
+  if (lvl >= 14) return { text: 'CRIT', cls: 'crit' };
+  if (lvl >= 10) return { text: 'HIGH', cls: 'high' };
+  if (lvl >= 1)  return { text: 'L' + lvl, cls: 'ok' };
+  return { text: '—', cls: 'dim' };
+}
+
+// ===== RESULTS =====
+
+let resultsData = [];
+
+function renderResults() {
+  const tbody = el('results-tbody');
+  const stats = el('summary-stats');
+
+  el('results-count').textContent = resultsData.length;
+
+  if (resultsData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; color: var(--text-3); padding: 20px;">No results yet</td></tr>';
+    stats.style.display = 'none';
+    return;
+  }
+
+  tbody.innerHTML = resultsData.map(r => {
+    const time = r.ts.split(' ')[1] || r.ts;
+    const edr  = r.edr;
+    const ebpf = r.ebpf;
+    const winnerCls = 'win-pill ' + r.winner;
+    const winnerText = r.winner.toUpperCase();
+    const eLvl = levelLabel(edr.rule_level);
+    const bLvl = levelLabel(ebpf.rule_level);
+    return `<tr>
+      <td style="color: var(--text-3);">${time}</td>
+      <td>${r.sample_id}</td>
+      <td title="${escapeHtml(r.sample_name)}">${escapeHtml(r.sample_name).substring(0, 32)}</td>
+      <td style="color: var(--text-2);">${r.tech}</td>
+      <td class="center"><span class="dot-result ${edr.detected ? 'yes' : 'no'}"></span></td>
+      <td class="center">${edr.latency_ms || '—'}</td>
+      <td class="center" style="color: var(--${eLvl.cls === 'crit' ? 'red' : eLvl.cls === 'high' ? 'amber' : 'text-3'});">${eLvl.text}</td>
+      <td class="center"><span class="dot-result ${ebpf.detected ? 'yes' : 'no'}"></span></td>
+      <td class="center">${ebpf.latency_ms || '—'}</td>
+      <td class="center" style="color: var(--${bLvl.cls === 'crit' ? 'red' : bLvl.cls === 'high' ? 'amber' : 'text-3'});">${bLvl.text}</td>
+      <td class="center">${edr.peak_cpu}</td>
+      <td class="center">${ebpf.peak_cpu}</td>
+      <td class="center"><span class="${winnerCls}">${winnerText}</span></td>
+    </tr>`;
+  }).join('');
+
+  stats.style.display = '';
+  const ebpfWins = resultsData.filter(r => r.winner === 'ebpf').length;
+  const edrWins  = resultsData.filter(r => r.winner === 'edr').length;
+  const ebpfLatencies = resultsData.filter(r => r.ebpf.latency_ms).map(r => r.ebpf.latency_ms);
+  const avgE = ebpfLatencies.length ?
+    Math.round(ebpfLatencies.reduce((a, b) => a + b, 0) / ebpfLatencies.length) : null;
+
+  el('stat-total').textContent = resultsData.length;
+  el('stat-ebpf-wins').textContent = ebpfWins;
+  el('stat-edr-wins').textContent  = edrWins;
+  el('stat-avg-ebpf').textContent  = avgE !== null ? avgE + 'ms' : '—';
+}
+
+// ===== WEBSOCKET =====
+
+let ws;
+let reconnectTimer;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host + '/ws/browser';
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    feedAdd('system', 'Backend холбогдлоо', 'system');
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+  };
+
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    handleMessage(msg);
+  };
+
+  ws.onclose = () => {
+    feedAdd('system', 'Backend салгагдлаа — 3 сек дараа дахин холбогдоно', 'system');
+    reconnectTimer = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => feedAdd('system', 'WebSocket алдаа', 'system');
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+
+    case 'init':
+      samplesData = msg.samples || [];
+      const sel = el('sample-select');
+      sel.innerHTML = '<option value="">— Sample songono uu —</option>';
+      samplesData.forEach(s => {
+        const exp = [];
+        if (s.expected_edr)  exp.push('EDR✓');
+        if (s.expected_ebpf) exp.push('eBPF✓');
+        const o = document.createElement('option');
+        o.value = s.id;
+        o.textContent = `${s.id} — ${s.name}  (${s.tech})  [${exp.join(' ') || 'neutral'}]`;
+        sel.appendChild(o);
+      });
+      Object.entries(msg.agents_online || {}).forEach(([k, online]) => {
+        el('dot-' + k).className = 'dot ' + (online ? 'online' : 'offline');
+      });
+      resultsData = msg.results || [];
+      renderResults();
+      break;
+
+    case 'agent_status':
+      el('dot-' + msg.agent).className = 'dot ' + (msg.online ? 'online' : 'offline');
+      feedAdd('system', `Agent ${msg.agent} → ${msg.online ? 'ONLINE' : 'OFFLINE'}`, 'system');
+      break;
+
+    case 'metrics':
+      el('cpu-' + msg.source).textContent = msg.cpu.toFixed(1);
+      el('ram-' + msg.source).textContent = msg.ram_mb;
+      el('net-' + msg.source).textContent = msg.net_conn;
+      pushChart(msg.source, msg.cpu, msg.ram_pct);
+      break;
+
+    case 'test_started':
+      const s = msg.sample;
+      el('cur-sample').textContent = s.id;
+      el('cur-sample').style.fontSize = '20px';
+      el('lat-ebpf').textContent = '...';
+      el('lat-edr').textContent  = '...';
+      el('winner').textContent   = '—';
+      el('winner').style.color = '';
+      ['ebpf','edr'].forEach(k => {
+        setBadge(k, 'running', 'RUNNING');
+        el('dt-lat-' + k).textContent = '...';
+        el('dt-lat-' + k).className = 'value';
+        el('dt-lvl-' + k).textContent = 'Hülee...';
+        el('dt-lvl-' + k).className = 'value dim';
+        el('dt-rule-' + k).textContent = '—';
+      });
+      feedAdd('system', `Sample ${s.id} (${s.name}) ehellee`, 'system');
+      break;
+
+    case 'sample_started':
+      feedAdd(msg.source, `Process started — PID ${msg.pid}`, msg.source);
+      break;
+
+    case 'sample_finished':
+      feedAdd(msg.source, `Sample finished — exit ${msg.exit_code}`, msg.source);
+      break;
+
+    case 'alert':
+      handleAlert(msg);
+      break;
+
+    case 'result':
+      resultsData.push(msg.result);
+      renderResults();
+      // UI sync
+      ['ebpf','edr'].forEach(k => {
+        if (!msg.result[k].detected && el('badge-' + k).className.includes('running')) {
+          setBadge(k, 'missed', 'MISSED');
+          el('dt-lat-' + k).textContent = 'no detection';
+          el('dt-lat-' + k).className = 'value dim';
+          el('lat-' + k).textContent = '—';
+        }
+      });
+      updateWinnerDisplay(msg.result.winner);
+      break;
+
+    case 'test_reset':
+      resetUi();
+      break;
+
+    case 'run_all_started':
+      runAllActive = true;
+      el('progress-row').classList.add('active');
+      el('progress-fill').style.width = '0%';
+      el('progress-label').textContent = `Run All — 0/${msg.total}`;
+      el('btn-run').disabled = true;
+      el('btn-run-all').style.display = 'none';
+      el('btn-stop').style.display = '';
+      feedAdd('system', `Run All эхэллээ — ${msg.total} sample, ${msg.interval}s завсар`, 'system');
+      break;
+
+    case 'run_all_progress':
+      const pct = (msg.current / msg.total) * 100;
+      el('progress-fill').style.width = pct + '%';
+      el('progress-label').textContent = `${msg.current}/${msg.total} · sample ${msg.sample_id}`;
+      break;
+
+    case 'run_all_done':
+      runAllActive = false;
+      el('progress-row').classList.remove('active');
+      el('btn-run').disabled = false;
+      el('btn-run-all').style.display = '';
+      el('btn-stop').style.display = 'none';
+      feedAdd('system', `Run All дууслаа — ${msg.results_count} үр дүн`, 'system');
+      break;
+
+    case 'run_all_stopped':
+      runAllActive = false;
+      el('progress-row').classList.remove('active');
+      el('btn-run').disabled = false;
+      el('btn-run-all').style.display = '';
+      el('btn-stop').style.display = 'none';
+      feedAdd('system', `Run All zogsson`, 'system');
+      break;
+
+    case 'cleanup_started':
+      feedAdd('system', 'Cleanup командыг агентууд руу явууллаа', 'system');
+      break;
+
+    case 'cleanup_done':
+      feedAdd(msg.source, `Cleanup — ${msg.killed} prozess устгасан`, msg.source);
+      break;
+
+    case 'results_cleared':
+      resultsData = [];
+      renderResults();
+      feedAdd('system', 'Үр дүнг цэвэрлэлээ', 'system');
+      break;
+  }
+}
+
+function handleAlert(msg) {
+  const k = msg.source;
+  const lvl = msg.rule_level || 0;
+  const lvlInfo = levelLabel(lvl);
+
+  if (msg.first_detect && msg.latency_ms !== null) {
+    el('dt-lat-' + k).textContent = msg.latency_ms + ' ms';
+    el('dt-lat-' + k).className = 'value';
+    el('lat-' + k).textContent = msg.latency_ms + 'ms';
+    setBadge(k, 'detected', 'DETECTED');
+  }
+
+  el('dt-lvl-' + k).textContent = lvlInfo.text + ' · ' + (msg.rule_desc || '').slice(0, 40);
+  el('dt-lvl-' + k).className = 'value ' + lvlInfo.cls;
+  el('dt-rule-' + k).textContent = 'rule ' + msg.rule_id;
+
+  feedAdd(k, `${lvlInfo.text} — ${msg.rule_desc} [rule ${msg.rule_id}]`,
+          lvl >= 14 ? 'crit' : k);
+}
+
+function updateWinnerDisplay(winner) {
+  const wEl = el('winner');
+  if (winner === 'ebpf') {
+    wEl.textContent = 'eBPF';
+    wEl.style.color = 'var(--teal)';
+  } else if (winner === 'edr') {
+    wEl.textContent = 'EDR';
+    wEl.style.color = 'var(--pink)';
+  } else if (winner === 'tie') {
+    wEl.textContent = 'TIE';
+    wEl.style.color = 'var(--amber)';
+  } else {
+    wEl.textContent = 'NONE';
+    wEl.style.color = 'var(--text-3)';
+  }
+}
+
+function resetUi() {
+  ['ebpf','edr'].forEach(k => {
+    setBadge(k, 'idle', 'IDLE');
+    el('dt-lat-' + k).textContent = '—';
+    el('dt-lat-' + k).className = 'value dim';
+    el('dt-lvl-' + k).textContent = 'No alert';
+    el('dt-lvl-' + k).className = 'value dim';
+    el('dt-rule-' + k).textContent = '—';
+    el('lat-' + k).textContent = '—';
+  });
+  el('cur-sample').textContent = '—';
+  el('winner').textContent = '—';
+  el('winner').style.color = '';
+}
+
+// ===== CONTROLS =====
+
+el('btn-run').addEventListener('click', () => {
+  const id = el('sample-select').value;
+  if (!id) { alert('Sample songono uu'); return; }
+  ws.send(JSON.stringify({ cmd: 'run_sample', sample_id: id }));
+});
+
+el('btn-run-all').addEventListener('click', () => {
+  if (!confirm('10 sample-ыг 35 секунд завсартай дарааллаар ажиллуулах уу? (~6 минут)')) return;
+  ws.send(JSON.stringify({ cmd: 'run_all', interval: 5 }));
+});
+
+el('btn-stop').addEventListener('click', () => {
+  ws.send(JSON.stringify({ cmd: 'stop_run_all' }));
+});
+
+el('btn-cleanup').addEventListener('click', () => {
+  ws.send(JSON.stringify({ cmd: 'cleanup' }));
+});
+
+el('btn-reset').addEventListener('click', () => {
+  ws.send(JSON.stringify({ cmd: 'reset' }));
+});
+
+el('feed-clear').addEventListener('click', () => {
+  el('feed-list').innerHTML = '';
+});
+
+el('btn-clear-results').addEventListener('click', () => {
+  if (!confirm('Бүх үр дүнг устгах уу?')) return;
+  ws.send(JSON.stringify({ cmd: 'clear_results' }));
+});
+
+// ===== THEME TOGGLE =====
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  el('theme-icon-moon').style.display = theme === 'light' ? '' : 'none';
+  el('theme-icon-sun').style.display  = theme === 'light' ? 'none' : '';
+  // Chart-уудыг шинэчилэх
+  if (window.charts) updateChartsTheme();
+}
+
+el('theme-toggle').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  // Session дотор санах
+  try { sessionStorage.setItem('theme', next); } catch(e) {}
+});
+
+// Anh нь хадгалагдсан theme-ийг сэргээх
+try {
+  const saved = sessionStorage.getItem('theme');
+  if (saved) applyTheme(saved);
+} catch(e) {}
+
+connect();
+
+</script>
+</body>
+</html>
