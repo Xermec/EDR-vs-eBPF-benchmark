@@ -152,3 +152,27 @@ sudo tail -f /var/ossec/logs/alerts/alerts.json | grep -E "rwx_hunter|trellix"
 # Backend permission
 sudo -u root cat /var/ossec/logs/alerts/alerts.json | head
 ```
+
+## Анхааруулга
+
+```
+- 3 ширхэг Ubuntu 22.04 LTS сервер
+- Wazuh 4.14+ manager
+- Trellix Endpoint Security 10.7 (эсвэл өөр EDR)
+- Linux kernel 5.15+ (eBPF tracepoint-уудад)
+- BCC tools 0.30+
+- Python 3.10+
+- Node.js 18+ (frontend hosting шаардлагагүй)
+
+## Тайлбар
+
+Энэхүү код нь тодорхой lab орчинд (10.52.1.0/24 subnet) бичигдсэн.
+Өөр орчинд ажиллуулахын тулд:
+- server/main.py доторх AGENTS dict-д IP-уудыг солих
+- samples/*/run.sh-ийн LHOST-уудыг өөрчлөх
+- Wazuh custom rule (rules/local_rules.xml) нэмэх        
+```
+
+
+
+
