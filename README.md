@@ -1,6 +1,14 @@
 # Trellix EDR-vs-eBPF-benchmark
 EDR болон eBPF - ийн харьцуулсан судалгаа
 
+
+<img width="2027" height="1164" alt="image" src="https://github.com/user-attachments/assets/51eba106-c937-4e72-b978-88de4d4b989d" />
+
+
+
+
+
+
 Real-time website, Trellix EDR болон custom eBPF-ийн илрүүлэх чадварыг 10 өөр malware sample дээр side-by-side харьцуулна.
 
 ## Бүтэц
