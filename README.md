@@ -8,8 +8,7 @@
 
 ---
 
-<img width="2027" height="1164" alt="image" src="https://github.com/user-attachments/assets/51eba106-c937-4e72-b978-88de4d4b989d" />
-
+<img width="1076" height="769" alt="image" src="https://github.com/user-attachments/assets/76baa1e5-e3de-48f9-ab2e-83d301e85cf2" />
 
 ## Ерөнхий танилцуулга
 
