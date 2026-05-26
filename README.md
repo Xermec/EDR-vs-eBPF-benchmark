@@ -9,6 +9,7 @@
 ---
 
 <img width="1076" height="769" alt="image" src="https://github.com/user-attachments/assets/76baa1e5-e3de-48f9-ab2e-83d301e85cf2" />
+<img width="1343" height="769" alt="image" src="https://github.com/user-attachments/assets/a23c5b2e-4ffe-4b92-8351-c64a06f8638e" />
 
 ## Ерөнхий танилцуулга
 
