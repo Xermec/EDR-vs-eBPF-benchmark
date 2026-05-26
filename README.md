@@ -1,4 +1,4 @@
-# EDR vs eBPF vs ClamAV — Detection Benchmark
+# EDR vs eBPF vs ClamAV — Харьцуулсан судалгаа
 
 > Linux орчинд **3 төрлийн security detection системийн** илрүүлэх чадварыг 10 malware sample дээр real-time харьцуулах веб дашбоард
 
